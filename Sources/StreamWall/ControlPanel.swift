@@ -5,24 +5,32 @@ final class AppState: ObservableObject {
     @Published var editMode: Bool = false
 }
 
-/// メニューバーから開く管理画面。URLの追加・編集・削除と配置モードの切替を行う。
+/// メニューバーから開く管理画面。URLの追加・編集・削除、各種設定、配置モードの切替を行う。
 struct ControlPanel: View {
     @ObservedObject var store: StreamStore
     @ObservedObject var appState: AppState
+    @ObservedObject var loc: Localizer
 
     @State private var newURL: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("StreamWall")
-                .font(.headline)
+            HStack {
+                Text("StreamWall").font(.headline)
+                Spacer()
+                Picker(loc.t("panel_language"), selection: $loc.language) {
+                    ForEach(AppLanguage.allCases) { lang in
+                        Text(lang.displayName(loc)).tag(lang)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 140)
+            }
 
             Toggle(isOn: $appState.editMode) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("配置モード")
-                    Text(appState.editMode
-                         ? "前面に出ています。ドラッグで移動・端でリサイズ・別ディスプレイへ移動できます。"
-                         : "壁紙レイヤーに固定中（他アプリの後ろで再生）。")
+                    Text(loc.t("panel_arrange"))
+                    Text(appState.editMode ? loc.t("panel_arrange_on") : loc.t("panel_arrange_off"))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -32,43 +40,43 @@ struct ControlPanel: View {
             Divider()
 
             HStack {
-                TextField("http://192.168.1.4:8081", text: $newURL)
+                TextField(loc.t("panel_url_ph"), text: $newURL)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(addStream)
-                Button("追加", action: addStream)
+                Button(loc.t("panel_add"), action: addStream)
                     .disabled(newURL.trimmingCharacters(in: .whitespaces).isEmpty)
             }
 
             if store.streams.isEmpty {
-                Text("ストリームがまだありません。上のURL欄に motion のアドレスを入れて「追加」してください。")
+                Text(loc.t("panel_empty"))
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .padding(.vertical, 8)
             } else {
                 ScrollView {
-                    VStack(spacing: 6) {
+                    VStack(spacing: 10) {
                         ForEach(store.streams) { stream in
-                            StreamRow(store: store, stream: stream)
+                            StreamRow(store: store, loc: loc, streamID: stream.id)
                         }
                     }
                 }
-                .frame(maxHeight: 260)
+                .frame(maxHeight: 360)
             }
 
             Divider()
 
             HStack {
-                Button("すべて再読み込み") {
+                Button(loc.t("menu_reload_all")) {
                     NotificationCenter.default.post(name: .reloadAllStreams, object: nil)
                 }
                 Spacer()
-                Button("終了") {
+                Button(loc.t("menu_quit")) {
                     NSApp.terminate(nil)
                 }
             }
         }
         .padding(16)
-        .frame(width: 420)
+        .frame(width: 460)
     }
 
     private func addStream() {
@@ -77,30 +85,111 @@ struct ControlPanel: View {
     }
 }
 
-/// 1行（URL編集 + 削除）。
+/// 1つのストリームの設定行（名前・URL・表示ON/OFF・fit・不透明度・操作）。
 private struct StreamRow: View {
     @ObservedObject var store: StreamStore
-    let stream: Stream
+    @ObservedObject var loc: Localizer
+    let streamID: UUID
 
-    @State private var text: String = ""
+    @State private var nameText: String = ""
+    @State private var urlText: String = ""
+
+    /// 常に store の最新値を参照する。
+    private var current: Stream? {
+        store.streams.first { $0.id == streamID }
+    }
 
     var body: some View {
-        HStack {
-            TextField("URL", text: $text)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { store.updateURL(id: stream.id, url: text) }
-            Button {
-                store.remove(id: stream.id)
-            } label: {
-                Image(systemName: "trash")
+        GroupBox {
+            if let stream = current {
+                VStack(spacing: 8) {
+                    HStack {
+                        TextField(loc.t("panel_name_ph"), text: $nameText)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { commitName(stream) }
+                        Toggle(loc.t("panel_show"), isOn: enabledBinding(stream))
+                            .toggleStyle(.checkbox)
+                    }
+
+                    HStack {
+                        TextField("URL", text: $urlText)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { commitURL(stream) }
+                        Button {
+                            NotificationCenter.default.post(name: .reloadStream, object: streamID)
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderless)
+                        .help(loc.t("panel_reload"))
+                        Button {
+                            store.remove(id: streamID)
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .help(loc.t("panel_delete"))
+                    }
+
+                    HStack(spacing: 12) {
+                        Picker(loc.t("panel_fit"), selection: fitBinding(stream)) {
+                            Text(loc.t("fit_contain")).tag(FitMode.contain)
+                            Text(loc.t("fit_cover")).tag(FitMode.cover)
+                            Text(loc.t("fit_fill")).tag(FitMode.fill)
+                        }
+                        .frame(width: 180)
+
+                        Text(loc.t("panel_opacity")).font(.caption)
+                        Slider(value: opacityBinding(stream), in: 0.2...1.0)
+                    }
+                }
+                .onAppear {
+                    nameText = stream.name
+                    urlText = stream.url
+                }
             }
-            .buttonStyle(.borderless)
-            .help("削除")
         }
-        .onAppear { text = stream.url }
+    }
+
+    // MARK: - コミット / バインディング
+
+    private func commitName(_ stream: Stream) {
+        var s = stream
+        s.name = nameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        store.update(s)
+    }
+
+    private func commitURL(_ stream: Stream) {
+        let trimmed = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var s = stream
+        s.url = trimmed
+        store.update(s)
+    }
+
+    private func enabledBinding(_ stream: Stream) -> Binding<Bool> {
+        Binding(
+            get: { current?.enabled ?? stream.enabled },
+            set: { var s = current ?? stream; s.enabled = $0; store.update(s) }
+        )
+    }
+
+    private func fitBinding(_ stream: Stream) -> Binding<FitMode> {
+        Binding(
+            get: { current?.fit ?? stream.fit },
+            set: { var s = current ?? stream; s.fit = $0; store.update(s) }
+        )
+    }
+
+    private func opacityBinding(_ stream: Stream) -> Binding<Double> {
+        Binding(
+            get: { current?.opacity ?? stream.opacity },
+            set: { var s = current ?? stream; s.opacity = $0; store.update(s) }
+        )
     }
 }
 
 extension Notification.Name {
     static let reloadAllStreams = Notification.Name("StreamWall.reloadAllStreams")
+    static let reloadStream = Notification.Name("StreamWall.reloadStream")
 }

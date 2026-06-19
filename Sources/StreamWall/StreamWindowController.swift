@@ -6,22 +6,24 @@ import WebKit
 /// 配置モード時は前面の通常ウィンドウになり、ドラッグ移動・リサイズ・別ディスプレイへの移動ができる。
 final class StreamWindowController: NSObject, NSWindowDelegate {
     let streamID: UUID
-    private(set) var url: String
 
     private let store: StreamStore
     private let window: NSWindow
     private let webView: WKWebView
+
+    /// 現在反映済みのモデル（差分判定に使う）。
+    private var stream: Stream
+    private var editMode: Bool = false
 
     /// 削除に伴うプログラム的なクローズかどうか（× ボタン押下と区別するため）。
     private var isClosingProgrammatically = false
 
     init(stream: Stream, store: StreamStore) {
         self.streamID = stream.id
-        self.url = stream.url
+        self.stream = stream
         self.store = store
 
         let config = WKWebViewConfiguration()
-        config.suppressesIncrementalRendering = false
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground") // 白いちらつきを防ぐ
         self.webView = webView
@@ -40,16 +42,17 @@ final class StreamWindowController: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.backgroundColor = .black
         window.hasShadow = false
-        window.title = stream.url
+        window.title = stream.displayName
+        window.alphaValue = stream.opacity
         window.setFrame(stream.frame, display: true)
 
-        loadStream(url: stream.url)
+        loadStream()
     }
 
     // MARK: - 表示
 
     func show() {
-        window.orderFront(nil)
+        applyVisibility()
     }
 
     func closeWindow() {
@@ -57,12 +60,22 @@ final class StreamWindowController: NSObject, NSWindowDelegate {
         window.close()
     }
 
-    /// store 側のモデル更新を反映する。URL が変わったときだけ再読み込みする。
-    func update(stream: Stream) {
-        if stream.url != url {
-            url = stream.url
-            window.title = stream.url
-            loadStream(url: stream.url)
+    /// store 側のモデル更新を、変わった項目だけ反映する。
+    func update(stream new: Stream) {
+        let old = stream
+        stream = new
+
+        if new.url != old.url || new.fit != old.fit {
+            loadStream()
+        }
+        if new.opacity != old.opacity {
+            window.alphaValue = new.opacity
+        }
+        if new.displayName != old.displayName {
+            window.title = new.displayName
+        }
+        if new.enabled != old.enabled {
+            applyVisibility()
         }
     }
 
@@ -71,6 +84,7 @@ final class StreamWindowController: NSObject, NSWindowDelegate {
     /// editMode == false: 壁紙レイヤーに固定（クリックは透過、操作不可）。
     /// editMode == true : 前面の通常ウィンドウ（移動・リサイズ・削除可）。
     func applyMode(editMode: Bool) {
+        self.editMode = editMode
         let frame = window.frame
         if editMode {
             window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
@@ -79,9 +93,7 @@ final class StreamWindowController: NSObject, NSWindowDelegate {
             window.collectionBehavior = [.fullScreenAuxiliary]
             window.isMovableByWindowBackground = true
             window.hasShadow = true
-            window.title = url
-            window.delegate = self
-            window.contentView = webView
+            window.title = stream.displayName
         } else {
             window.styleMask = [.borderless]
             // デスクトップ（壁紙）のすぐ上、アイコンより下の階層。
@@ -92,24 +104,40 @@ final class StreamWindowController: NSObject, NSWindowDelegate {
         }
         // styleMask の変更で枠が変わるので元の位置・サイズを復元する。
         window.setFrame(frame, display: true)
-        window.orderFront(nil)
+        applyVisibility()
+    }
+
+    /// enabled と editMode に応じて表示/非表示を決める。
+    /// 非表示ストリームでも配置モード中は見えるようにして、配置や削除をできるようにする。
+    private func applyVisibility() {
+        if stream.enabled || editMode {
+            window.orderFront(nil)
+        } else {
+            window.orderOut(nil)
+        }
     }
 
     // MARK: - 読み込み
 
-    private func loadStream(url: String) {
-        webView.loadHTMLString(Self.makeHTML(urlString: url), baseURL: nil)
+    private func loadStream() {
+        webView.loadHTMLString(Self.makeHTML(urlString: stream.url, fit: stream.fit), baseURL: nil)
     }
 
     func reload() {
-        loadStream(url: url)
+        loadStream()
     }
 
     /// MJPEG（motion 等）を <img> で表示し、切断時は自動で再接続する HTML を作る。
-    private static func makeHTML(urlString: String) -> String {
+    private static func makeHTML(urlString: String, fit: FitMode) -> String {
         let escaped = urlString
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+        let objectFit: String
+        switch fit {
+        case .contain: objectFit = "contain"
+        case .cover: objectFit = "cover"
+        case .fill: objectFit = "fill"
+        }
         return """
         <!DOCTYPE html>
         <html>
@@ -117,7 +145,7 @@ final class StreamWindowController: NSObject, NSWindowDelegate {
         <meta charset="utf-8">
         <style>
           html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
-          #v { width: 100vw; height: 100vh; object-fit: contain; display: block; }
+          #v { width: 100vw; height: 100vh; object-fit: \(objectFit); display: block; }
         </style>
         </head>
         <body>

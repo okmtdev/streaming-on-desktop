@@ -5,6 +5,7 @@ import Combine
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = StreamStore()
     private let appState = AppState()
+    private let loc = Localizer.shared
 
     private var windows: [UUID: StreamWindowController] = [:]
     private var statusItem: NSStatusItem?
@@ -19,8 +20,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 配置モードの切替を全ウィンドウへ反映。
         appState.$editMode
             .sink { [weak self] mode in
-                guard let self else { return }
-                self.windows.values.forEach { $0.applyMode(editMode: mode) }
+                self?.windows.values.forEach { $0.applyMode(editMode: mode) }
+            }
+            .store(in: &cancellables)
+
+        // 言語変更でメニューを作り直す。
+        loc.$language
+            .sink { [weak self] _ in
+                self?.rebuildMenus()
             }
             .store(in: &cancellables)
 
@@ -31,6 +38,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
+        // 単体の再読み込み。
+        NotificationCenter.default.publisher(for: .reloadStream)
+            .sink { [weak self] note in
+                if let id = note.object as? UUID {
+                    self?.windows[id]?.reload()
+                }
+            }
+            .store(in: &cancellables)
+
+        buildMainMenu()
         setupStatusItem()
         syncWindows()
 
@@ -40,7 +57,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - メニューバー
+    // MARK: - メインメニュー（編集メニューで Cmd+C/V/X を有効化）
+
+    /// LSUIElement アプリでも、メインメニューに「編集」項目があれば
+    /// テキストフィールドでコピー&ペーストのキー操作が効くようになる。
+    private func buildMainMenu() {
+        let mainMenu = NSMenu()
+
+        // アプリメニュー（先頭・タイトルは表示されない）
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: loc.t("menu_quit"),
+                        action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenuItem.submenu = appMenu
+
+        // 編集メニュー
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: loc.t("edit_menu_title"))
+        editMenu.addItem(withTitle: loc.t("edit_undo"), action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = editMenu.addItem(withTitle: loc.t("edit_redo"), action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: loc.t("edit_cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: loc.t("edit_copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: loc.t("edit_paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: loc.t("edit_select_all"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenuItem.submenu = editMenu
+
+        NSApp.mainMenu = mainMenu
+    }
+
+    // MARK: - メニューバー（ステータスアイコン）
 
     private func setupStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -48,27 +97,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.image = NSImage(systemSymbolName: "play.rectangle.on.rectangle",
                                    accessibilityDescription: "StreamWall")
         }
+        item.menu = makeStatusMenu()
+        self.statusItem = item
+    }
 
+    private func makeStatusMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(withTitle: "管理画面を開く…", action: #selector(openControlPanel), keyEquivalent: "o")
+        menu.addItem(withTitle: loc.t("menu_open_panel"), action: #selector(openControlPanel), keyEquivalent: "o")
         menu.addItem(.separator())
-
-        let editItem = NSMenuItem(title: "配置モード", action: #selector(toggleEditMode), keyEquivalent: "e")
-        menu.addItem(editItem)
-
-        menu.addItem(withTitle: "すべて再読み込み", action: #selector(reloadAll), keyEquivalent: "r")
+        menu.addItem(NSMenuItem(title: loc.t("menu_edit_mode"), action: #selector(toggleEditMode), keyEquivalent: "e"))
+        menu.addItem(withTitle: loc.t("menu_reload_all"), action: #selector(reloadAll), keyEquivalent: "r")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "終了", action: #selector(quit), keyEquivalent: "q")
-
+        menu.addItem(withTitle: loc.t("menu_quit"), action: #selector(quit), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
         menu.delegate = self
-        item.menu = menu
-        self.statusItem = item
+        return menu
+    }
+
+    private func rebuildMenus() {
+        buildMainMenu()
+        statusItem?.menu = makeStatusMenu()
+        controlPanelWindow?.title = "StreamWall"
     }
 
     @objc private func openControlPanel() {
         if controlPanelWindow == nil {
-            let view = ControlPanel(store: store, appState: appState)
+            let view = ControlPanel(store: store, appState: appState, loc: loc)
             let hosting = NSHostingController(rootView: view)
             let window = NSWindow(contentViewController: hosting)
             window.title = "StreamWall"
@@ -110,7 +164,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 let controller = StreamWindowController(stream: stream, store: store)
                 windows[stream.id] = controller
-                controller.show()
                 controller.applyMode(editMode: appState.editMode)
             }
         }

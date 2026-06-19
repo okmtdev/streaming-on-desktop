@@ -1,15 +1,27 @@
 import Foundation
 import AppKit
 
-/// 1本のストリーム（URL と配置情報）を表すモデル。
+/// 映像のはめ込み方。CSS の object-fit に対応する。
+enum FitMode: String, Codable, CaseIterable, Identifiable {
+    case contain // 全体表示（はみ出さない）
+    case cover   // 切り抜き（枠いっぱい・はみ出しトリミング）
+    case fill    // 引き伸ばし（縦横比を無視）
+    var id: String { rawValue }
+}
+
+/// 1本のストリーム（URL と配置・表示設定）を表すモデル。
 struct Stream: Codable, Identifiable, Equatable {
     var id: UUID
     var url: String
+    var name: String
     /// グローバル座標（全ディスプレイをまたぐ座標系・左下原点）でのウィンドウ枠。
     var x: Double
     var y: Double
     var width: Double
     var height: Double
+    var enabled: Bool
+    var fit: FitMode
+    var opacity: Double
 
     var frame: CGRect {
         get { CGRect(x: x, y: y, width: width, height: height) }
@@ -21,13 +33,42 @@ struct Stream: Codable, Identifiable, Equatable {
         }
     }
 
-    init(id: UUID = UUID(), url: String, frame: CGRect) {
+    /// 一覧などに出す表示名。name が空なら URL を使う。
+    var displayName: String {
+        name.isEmpty ? url : name
+    }
+
+    init(id: UUID = UUID(), url: String, name: String = "", frame: CGRect,
+         enabled: Bool = true, fit: FitMode = .contain, opacity: Double = 1.0) {
         self.id = id
         self.url = url
+        self.name = name
         self.x = frame.origin.x
         self.y = frame.origin.y
         self.width = frame.size.width
         self.height = frame.size.height
+        self.enabled = enabled
+        self.fit = fit
+        self.opacity = opacity
+    }
+
+    // 既存の streams.json（新フィールドが無い）も読めるよう、欠損キーは既定値で補う。
+    enum CodingKeys: String, CodingKey {
+        case id, url, name, x, y, width, height, enabled, fit, opacity
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        url = try c.decode(String.self, forKey: .url)
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        x = try c.decode(Double.self, forKey: .x)
+        y = try c.decode(Double.self, forKey: .y)
+        width = try c.decode(Double.self, forKey: .width)
+        height = try c.decode(Double.self, forKey: .height)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        fit = try c.decodeIfPresent(FitMode.self, forKey: .fit) ?? .contain
+        opacity = try c.decodeIfPresent(Double.self, forKey: .opacity) ?? 1.0
     }
 }
 
@@ -35,8 +76,8 @@ struct Stream: Codable, Identifiable, Equatable {
 final class StreamStore: ObservableObject {
     @Published private(set) var streams: [Stream] = []
 
-    /// 追加・削除・URL変更など「ウィンドウの構成が変わる」操作の後に呼ばれる。
-    /// （位置・サイズだけの変更では呼ばれない）
+    /// 追加・削除・プロパティ変更の後に呼ばれる（ウィンドウへ反映するため）。
+    /// 位置・サイズだけの変更（ウィンドウ→モデル方向）では呼ばれない。
     var onStructuralChange: (() -> Void)?
 
     private let fileURL: URL
@@ -55,8 +96,7 @@ final class StreamStore: ObservableObject {
     func add(url: String) {
         let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let stream = Stream(url: trimmed, frame: Self.defaultFrame())
-        streams.append(stream)
+        streams.append(Stream(url: trimmed, frame: Self.defaultFrame()))
         save()
         onStructuralChange?()
     }
@@ -67,11 +107,11 @@ final class StreamStore: ObservableObject {
         onStructuralChange?()
     }
 
-    func updateURL(id: UUID, url: String) {
-        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let idx = streams.firstIndex(where: { $0.id == id }) else { return }
-        guard streams[idx].url != trimmed, !trimmed.isEmpty else { return }
-        streams[idx].url = trimmed
+    /// プロパティ（URL・名前・表示・fit・不透明度）の更新。
+    func update(_ stream: Stream) {
+        guard let idx = streams.firstIndex(where: { $0.id == stream.id }) else { return }
+        guard streams[idx] != stream else { return }
+        streams[idx] = stream
         save()
         onStructuralChange?()
     }
