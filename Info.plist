@@ -8,6 +8,8 @@
 	<string>StreamWall</string>
 	<key>CFBundleExecutable</key>
 	<string>StreamWall</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>dev.okmt.streamwall</string>
 	<key>CFBundlePackageType</key>

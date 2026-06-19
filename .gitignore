@@ -4,3 +4,7 @@ StreamWall.app/
 *.xcodeproj
 DerivedData/
 .DS_Store
+
+# generated icon artifacts
+Icon/AppIcon.iconset/
+Icon/AppIcon.icns

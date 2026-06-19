@@ -25,7 +25,8 @@ final class StreamWindowController: NSObject, NSWindowDelegate {
 
         let config = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: config)
-        webView.setValue(false, forKey: "drawsBackground") // 白いちらつきを防ぐ
+        // 公開APIで背景を黒くし、読み込み時の白いちらつきを防ぐ（App Store審査対応）。
+        webView.underPageBackgroundColor = .black
         self.webView = webView
 
         self.window = NSWindow(

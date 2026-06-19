@@ -12,6 +12,7 @@ struct ControlPanel: View {
     @ObservedObject var loc: Localizer
 
     @State private var newURL: String = ""
+    @State private var launchAtLogin: Bool = LoginItem.isEnabled
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -41,6 +42,14 @@ struct ControlPanel: View {
                     .labelsHidden()
             }
             .frame(minHeight: 44)
+
+            Toggle(loc.t("panel_launch_at_login"), isOn: $launchAtLogin)
+                .toggleStyle(.checkbox)
+                .onChange(of: launchAtLogin) { newValue in
+                    LoginItem.set(newValue)
+                    // 失敗時は実際の状態へ戻す。
+                    launchAtLogin = LoginItem.isEnabled
+                }
 
             Divider()
 

@@ -82,6 +82,7 @@ final class Localizer: ObservableObject {
             "panel_reload": "Reload",
             "panel_delete": "Delete",
             "lang_auto": "Auto",
+            "panel_launch_at_login": "Launch at login",
         ],
         "ja": [
             "menu_open_panel": "管理画面を開く…",
@@ -112,6 +113,7 @@ final class Localizer: ObservableObject {
             "panel_reload": "再読み込み",
             "panel_delete": "削除",
             "lang_auto": "自動",
+            "panel_launch_at_login": "ログイン時に起動",
         ],
         "ko": [
             "menu_open_panel": "제어판 열기…",
@@ -142,6 +144,7 @@ final class Localizer: ObservableObject {
             "panel_reload": "새로고침",
             "panel_delete": "삭제",
             "lang_auto": "자동",
+            "panel_launch_at_login": "로그인 시 실행",
         ],
         "pt": [
             "menu_open_panel": "Abrir painel…",
@@ -172,6 +175,7 @@ final class Localizer: ObservableObject {
             "panel_reload": "Recarregar",
             "panel_delete": "Excluir",
             "lang_auto": "Automático",
+            "panel_launch_at_login": "Iniciar ao fazer login",
         ],
     ]
 }

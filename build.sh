@@ -26,6 +26,15 @@ cp "$BIN_PATH" "${APP_DIR}/Contents/MacOS/${APP_NAME}"
 cp Info.plist "${APP_DIR}/Contents/Info.plist"
 printf 'APPL????' > "${APP_DIR}/Contents/PkgInfo"
 
+# アイコン: 無ければ icon.png から生成し、バンドルへ同梱
+if [ ! -f Icon/AppIcon.icns ] && [ -f Icon/icon.png ] && command -v iconutil >/dev/null 2>&1; then
+    echo "==> アイコンを生成"
+    ./Icon/make-icon.sh || echo "(アイコン生成はスキップされました)"
+fi
+if [ -f Icon/AppIcon.icns ]; then
+    cp Icon/AppIcon.icns "${APP_DIR}/Contents/Resources/AppIcon.icns"
+fi
+
 # ローカル実行用に ad-hoc 署名（Gatekeeper / ローカルネットワーク許可のため）
 if command -v codesign >/dev/null 2>&1; then
     echo "==> ad-hoc 署名"
