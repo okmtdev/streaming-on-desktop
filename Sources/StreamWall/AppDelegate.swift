@@ -20,7 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 配置モードの切替を全ウィンドウへ反映。
         appState.$editMode
             .sink { [weak self] mode in
-                self?.windows.values.forEach { $0.applyMode(editMode: mode) }
+                guard let self else { return }
+                self.windows.values.forEach { $0.applyMode(editMode: mode) }
+                self.updateControlPanelLevel()
             }
             .store(in: &cancellables)
 
@@ -131,8 +133,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.center()
             controlPanelWindow = window
         }
+        updateControlPanelLevel()
         NSApp.activate(ignoringOtherApps: true)
         controlPanelWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// 配置モード中はストリーム窓が前面（.floating）に出るので、
+    /// 設定画面はそれより上の階層に上げて隠れないようにする。
+    private func updateControlPanelLevel() {
+        guard let window = controlPanelWindow else { return }
+        if appState.editMode {
+            window.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
+            window.orderFront(nil)
+        } else {
+            window.level = .normal
+        }
     }
 
     @objc private func toggleEditMode() {

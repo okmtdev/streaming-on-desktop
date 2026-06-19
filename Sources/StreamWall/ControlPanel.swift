@@ -27,15 +27,20 @@ struct ControlPanel: View {
                 .frame(width: 140)
             }
 
-            Toggle(isOn: $appState.editMode) {
+            HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(loc.t("panel_arrange"))
                     Text(appState.editMode ? loc.t("panel_arrange_on") : loc.t("panel_arrange_off"))
                         .font(.caption)
                         .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                Spacer(minLength: 0)
+                Toggle("", isOn: $appState.editMode)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
             }
-            .toggleStyle(.switch)
+            .frame(minHeight: 44)
 
             Divider()
 
@@ -54,13 +59,14 @@ struct ControlPanel: View {
                     .padding(.vertical, 8)
             } else {
                 ScrollView {
-                    VStack(spacing: 10) {
+                    VStack(spacing: 14) {
                         ForEach(store.streams) { stream in
                             StreamRow(store: store, loc: loc, streamID: stream.id)
                         }
                     }
+                    .padding(.vertical, 4)
                 }
-                .frame(maxHeight: 360)
+                .frame(minHeight: 240, maxHeight: 460)
             }
 
             Divider()
@@ -102,7 +108,7 @@ private struct StreamRow: View {
     var body: some View {
         GroupBox {
             if let stream = current {
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     HStack {
                         TextField(loc.t("panel_name_ph"), text: $nameText)
                             .textFieldStyle(.roundedBorder)
@@ -143,6 +149,7 @@ private struct StreamRow: View {
                         Slider(value: opacityBinding(stream), in: 0.2...1.0)
                     }
                 }
+                .padding(.vertical, 4)
                 .onAppear {
                     nameText = stream.name
                     urlText = stream.url
