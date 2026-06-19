@@ -8,3 +8,7 @@ DerivedData/
 # generated icon artifacts
 Icon/AppIcon.iconset/
 Icon/AppIcon.icns
+
+# distribution artifacts
+*.dmg
+*-notarize.zip

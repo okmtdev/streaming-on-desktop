@@ -91,7 +91,26 @@ open StreamWall.app
   クリックは透過するので、デスクトップ操作の邪魔をしません
 - 設定の保存先: `~/Library/Application Support/StreamWall/streams.json`
 
-## 自動起動させたい場合（任意）
+## 配布する（Developer ID + 公証）
 
-`システム設定 → 一般 → ログイン項目` に `StreamWall.app` を追加すると、
-Mac 起動時に自動でストリーミングが始まります。
+他の人の Mac に「壊れている/開発元を確認できない」の警告なしで渡したい場合は、
+Apple Developer Program（年 $99）に登録し、署名・公証した `.dmg` を作ります。
+
+```bash
+# 事前に1回だけ: 公証用の認証情報をキーチェーンに保存
+xcrun notarytool store-credentials StreamWallNotary \
+  --apple-id "you@example.com" --team-id "TEAMID" --password "app固有パスワード"
+
+# 署名 → 公証 → .dmg 作成（StreamWall.dmg ができる）
+NOTARY_PROFILE=StreamWallNotary ./release.sh
+```
+
+- 「Developer ID Application」証明書がキーチェーンにあれば、署名 ID は自動検出されます
+  （`SIGN_IDENTITY=...` で明示も可）。
+- 出来た `StreamWall.dmg` をそのまま配れば、受け取った人は警告なく開けます。
+- App Store への申請はこれとは別経路（サンドボックス対応や審査）が必要です。
+
+## 自動起動
+
+管理画面の「ログイン時に起動」にチェックを入れれば、Mac 起動時に自動で立ち上がります。
+（手動で行う場合は `システム設定 → 一般 → ログイン項目` に `StreamWall.app` を追加してもOK）
