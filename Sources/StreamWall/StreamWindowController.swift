@@ -14,6 +14,7 @@ final class StreamWindowController: NSObject, NSWindowDelegate {
     /// 現在反映済みのモデル（差分判定に使う）。
     private var stream: Stream
     private var editMode: Bool = false
+    private var reloadTimer: Timer?
 
     /// 削除に伴うプログラム的なクローズかどうか（× ボタン押下と区別するため）。
     private var isClosingProgrammatically = false
@@ -48,6 +49,7 @@ final class StreamWindowController: NSObject, NSWindowDelegate {
         window.setFrame(stream.frame, display: true)
 
         loadStream()
+        updateReloadTimer()
     }
 
     // MARK: - 表示
@@ -58,6 +60,8 @@ final class StreamWindowController: NSObject, NSWindowDelegate {
 
     func closeWindow() {
         isClosingProgrammatically = true
+        reloadTimer?.invalidate()
+        reloadTimer = nil
         window.close()
     }
 
@@ -77,6 +81,9 @@ final class StreamWindowController: NSObject, NSWindowDelegate {
         }
         if new.enabled != old.enabled {
             applyVisibility()
+        }
+        if new.reloadMinutes != old.reloadMinutes {
+            updateReloadTimer()
         }
     }
 
@@ -126,6 +133,20 @@ final class StreamWindowController: NSObject, NSWindowDelegate {
 
     func reload() {
         loadStream()
+    }
+
+    /// 定期再読み込みタイマーを現在の設定に合わせて張り直す。
+    private func updateReloadTimer() {
+        reloadTimer?.invalidate()
+        reloadTimer = nil
+        let minutes = stream.reloadMinutes
+        guard minutes > 0 else { return }
+        let timer = Timer(timeInterval: Double(minutes) * 60.0, repeats: true) { [weak self] _ in
+            self?.reload()
+        }
+        timer.tolerance = 10
+        RunLoop.main.add(timer, forMode: .common)
+        reloadTimer = timer
     }
 
     /// MJPEG（motion 等）を <img> で表示し、切断時は自動で再接続する HTML を作る。

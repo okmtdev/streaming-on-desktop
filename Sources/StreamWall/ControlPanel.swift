@@ -85,6 +85,10 @@ struct ControlPanel: View {
                     NotificationCenter.default.post(name: .reloadAllStreams, object: nil)
                 }
                 Spacer()
+                Button(loc.t("panel_close")) {
+                    NotificationCenter.default.post(name: .closeControlPanel, object: nil)
+                }
+                .keyboardShortcut(.cancelAction)
                 Button(loc.t("menu_quit")) {
                     NSApp.terminate(nil)
                 }
@@ -108,6 +112,7 @@ private struct StreamRow: View {
 
     @State private var nameText: String = ""
     @State private var urlText: String = ""
+    @FocusState private var urlFocused: Bool
 
     /// 常に store の最新値を参照する。
     private var current: Stream? {
@@ -119,17 +124,23 @@ private struct StreamRow: View {
             if let stream = current {
                 VStack(spacing: 10) {
                     HStack {
+                        // 名前は入力のたびに保存する（Enter を押し忘れても消えない）。
                         TextField(loc.t("panel_name_ph"), text: $nameText)
                             .textFieldStyle(.roundedBorder)
-                            .onSubmit { commitName(stream) }
+                            .onChange(of: nameText) { _ in commitName(stream) }
                         Toggle(loc.t("panel_show"), isOn: enabledBinding(stream))
                             .toggleStyle(.checkbox)
                     }
 
                     HStack {
+                        // URL は入力中の再接続を避けるため、確定 or フォーカスを外した時に保存。
                         TextField("URL", text: $urlText)
                             .textFieldStyle(.roundedBorder)
+                            .focused($urlFocused)
                             .onSubmit { commitURL(stream) }
+                            .onChange(of: urlFocused) { focused in
+                                if !focused { commitURL(stream) }
+                            }
                         Button {
                             NotificationCenter.default.post(name: .reloadStream, object: streamID)
                         } label: {
@@ -157,6 +168,20 @@ private struct StreamRow: View {
                         Text(loc.t("panel_opacity")).font(.caption)
                         Slider(value: opacityBinding(stream), in: 0.2...1.0)
                     }
+
+                    HStack(spacing: 12) {
+                        Toggle(loc.t("panel_auto_reload"), isOn: autoReloadBinding(stream))
+                            .toggleStyle(.checkbox)
+                        if (current?.reloadMinutes ?? 0) > 0 {
+                            Stepper(value: minutesBinding(stream), in: 1...1440) {
+                                Text("\(current?.reloadMinutes ?? 0) \(loc.t("panel_minutes"))")
+                                    .font(.caption)
+                                    .monospacedDigit()
+                            }
+                            .frame(width: 150)
+                        }
+                        Spacer(minLength: 0)
+                    }
                 }
                 .padding(.vertical, 4)
                 .onAppear {
@@ -170,7 +195,7 @@ private struct StreamRow: View {
     // MARK: - コミット / バインディング
 
     private func commitName(_ stream: Stream) {
-        var s = stream
+        var s = current ?? stream
         s.name = nameText.trimmingCharacters(in: .whitespacesAndNewlines)
         store.update(s)
     }
@@ -178,7 +203,7 @@ private struct StreamRow: View {
     private func commitURL(_ stream: Stream) {
         let trimmed = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        var s = stream
+        var s = current ?? stream
         s.url = trimmed
         store.update(s)
     }
@@ -203,9 +228,29 @@ private struct StreamRow: View {
             set: { var s = current ?? stream; s.opacity = $0; store.update(s) }
         )
     }
+
+    /// 定期再読み込みの ON/OFF。ON にしたら既定 5 分。
+    private func autoReloadBinding(_ stream: Stream) -> Binding<Bool> {
+        Binding(
+            get: { (current?.reloadMinutes ?? stream.reloadMinutes) > 0 },
+            set: { on in
+                var s = current ?? stream
+                s.reloadMinutes = on ? 5 : 0
+                store.update(s)
+            }
+        )
+    }
+
+    private func minutesBinding(_ stream: Stream) -> Binding<Int> {
+        Binding(
+            get: { max(1, current?.reloadMinutes ?? stream.reloadMinutes) },
+            set: { var s = current ?? stream; s.reloadMinutes = $0; store.update(s) }
+        )
+    }
 }
 
 extension Notification.Name {
     static let reloadAllStreams = Notification.Name("StreamWall.reloadAllStreams")
     static let reloadStream = Notification.Name("StreamWall.reloadStream")
+    static let closeControlPanel = Notification.Name("StreamWall.closeControlPanel")
 }

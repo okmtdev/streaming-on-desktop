@@ -49,6 +49,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
+        // 設定画面を閉じる（アプリは終了しない）。
+        NotificationCenter.default.publisher(for: .closeControlPanel)
+            .sink { [weak self] _ in
+                self?.controlPanelWindow?.orderOut(nil)
+            }
+            .store(in: &cancellables)
+
+        // スリープ復帰時に全ストリームを再読み込み（止まった映像を復活させる）。
+        NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)
+            .sink { [weak self] _ in
+                self?.windows.values.forEach { $0.reload() }
+            }
+            .store(in: &cancellables)
+
         buildMainMenu()
         setupStatusItem()
         syncWindows()

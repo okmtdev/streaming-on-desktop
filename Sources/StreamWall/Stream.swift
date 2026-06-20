@@ -22,6 +22,8 @@ struct Stream: Codable, Identifiable, Equatable {
     var enabled: Bool
     var fit: FitMode
     var opacity: Double
+    /// 定期再読み込みの間隔（分）。0 ならオフ。
+    var reloadMinutes: Int
 
     var frame: CGRect {
         get { CGRect(x: x, y: y, width: width, height: height) }
@@ -39,7 +41,8 @@ struct Stream: Codable, Identifiable, Equatable {
     }
 
     init(id: UUID = UUID(), url: String, name: String = "", frame: CGRect,
-         enabled: Bool = true, fit: FitMode = .contain, opacity: Double = 1.0) {
+         enabled: Bool = true, fit: FitMode = .contain, opacity: Double = 1.0,
+         reloadMinutes: Int = 0) {
         self.id = id
         self.url = url
         self.name = name
@@ -50,11 +53,12 @@ struct Stream: Codable, Identifiable, Equatable {
         self.enabled = enabled
         self.fit = fit
         self.opacity = opacity
+        self.reloadMinutes = reloadMinutes
     }
 
     // 既存の streams.json（新フィールドが無い）も読めるよう、欠損キーは既定値で補う。
     enum CodingKeys: String, CodingKey {
-        case id, url, name, x, y, width, height, enabled, fit, opacity
+        case id, url, name, x, y, width, height, enabled, fit, opacity, reloadMinutes
     }
 
     init(from decoder: Decoder) throws {
@@ -69,6 +73,7 @@ struct Stream: Codable, Identifiable, Equatable {
         enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         fit = try c.decodeIfPresent(FitMode.self, forKey: .fit) ?? .contain
         opacity = try c.decodeIfPresent(Double.self, forKey: .opacity) ?? 1.0
+        reloadMinutes = try c.decodeIfPresent(Int.self, forKey: .reloadMinutes) ?? 0
     }
 }
 
