@@ -68,12 +68,13 @@ struct ControlPanel: View {
                     .padding(.vertical, 8)
             } else {
                 ScrollView {
-                    VStack(spacing: 14) {
+                    VStack(spacing: 16) {
                         ForEach(store.streams) { stream in
                             StreamRow(store: store, loc: loc, streamID: stream.id)
                         }
                     }
                     .padding(.vertical, 4)
+                    .padding(.trailing, 2)
                 }
                 .frame(minHeight: 240, maxHeight: 460)
             }
@@ -120,7 +121,7 @@ private struct StreamRow: View {
     }
 
     var body: some View {
-        GroupBox {
+        Group {
             if let stream = current {
                 VStack(spacing: 10) {
                     HStack {
@@ -169,21 +170,28 @@ private struct StreamRow: View {
                         Slider(value: opacityBinding(stream), in: 0.2...1.0)
                     }
 
-                    HStack(spacing: 12) {
+                    HStack(spacing: 8) {
                         Toggle(loc.t("panel_auto_reload"), isOn: autoReloadBinding(stream))
                             .toggleStyle(.checkbox)
-                        if (current?.reloadMinutes ?? 0) > 0 {
-                            Stepper(value: minutesBinding(stream), in: 1...1440) {
-                                Text("\(current?.reloadMinutes ?? 0) \(loc.t("panel_minutes"))")
-                                    .font(.caption)
-                                    .monospacedDigit()
-                            }
-                            .frame(width: 150)
-                        }
                         Spacer(minLength: 0)
+                        if (current?.reloadMinutes ?? 0) > 0 {
+                            Text("\(current?.reloadMinutes ?? 0) \(loc.t("panel_minutes"))")
+                                .monospacedDigit()
+                                .frame(minWidth: 56, alignment: .trailing)
+                            Stepper("", value: minutesBinding(stream), in: 1...1440)
+                                .labelsHidden()
+                        }
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                )
                 .onAppear {
                     nameText = stream.name
                     urlText = stream.url
